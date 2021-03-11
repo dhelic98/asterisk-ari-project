@@ -21,103 +21,96 @@ function clientLoaded(err, client) {
         throw err;
     }
 
-    readline.question('Choose your option?\n1)Call between 2 extensions\n2)Call between multiple extensions\n3)Join an existing call\n', option => {
-        option = parseInt(option);
-        switch (option) {
-            case 1:
-                makeAcall();
-                break;
-            case 2:
-                createConference();
-                break;
-            case 3:
-                joinConference();
-                break;
-            default:
-                console.log("Wrong option");
-                break;
-        }
-    });
 
-    function makeAcall() {
-        let extensions = [];
-        let counter = 0;
-        let getExtension = () => {
-            readline.question('Enter first extension?\n', extension => {
-                ++counter;
-                extensions.push(extension);
-                if (counter < 2) {
-                    getExtension();
+    let getUserInput = () => {
+        readline.question('', option => {
+            option = option.split(' ');
+            console.log(option);
+            switch (option[0]) {
+                case 'dial':
+                    makeAcall(option.slice(1, option.length));
+                    getUserInput();
+                    break;
+                case 'join_call':
+                    joinConference(option);
+                    getUserInput();
+                    break;
+                case 'list_calls':
+                    listCalls();
+                    getUserInput();
+                    break;
+                default:
+                    console.log("Wrong option");
+                    getUserInput();
+                    break;
+            }
+        });
+    }
+
+    getUserInput();
+
+    function makeAcall(extensions) {
+        console.log(extensions);
+        if (extensions.length == 2) {
+            client.channels.create({
+                app: 'channel-dump',
+                endpoint: 'PJSIP/' + extensions[0]
+            }, (err, channelOrig) => {
+                if (err) {
+                    throw err;
                 } else {
-
                     client.channels.create({
                         app: 'channel-dump',
-                        endpoint: 'PJSIP/' + extensions[0]
-                    }, (err, channelOrig) => {
-                        if (err) {
-                            throw err;
-                        } else {
-                            client.channels.create({
-                                app: 'channel-dump',
-                                endpoint: 'PJSIP/' + extensions[1]
-                            }, (err, channelDestin) => {
-                                var bridge = client.Bridge();
-                                bridge.create(function(err, bridge) {
-                                    client.channels.dial({ channelId: channelDestin.id });
-                                    client.channels.dial({ channelId: channelOrig.id });
-                                    bridge.addChannel({ channel: channelOrig.id });
-                                    bridge.addChannel({ channel: channelDestin.id });
-                                    currentBridge = bridge.id;
-                                    bridgeType = '0';
-                                });
-                                channelOrig.on('ChannelEnteredBridge', function(event, obj) {})
-                                channelDestin.on('ChannelEnteredBridge', function(event, obj) {})
-                            });
-                        }
+                        endpoint: 'PJSIP/' + extensions[1]
+                    }, (err, channelDestin) => {
+                        var bridge = client.Bridge();
+                        bridge.create(function(err, bridge) {
+                            client.channels.dial({ channelId: channelDestin.id });
+                            client.channels.dial({ channelId: channelOrig.id });
+                            bridge.addChannel({ channel: channelOrig.id });
+                            bridge.addChannel({ channel: channelDestin.id });
+                            currentBridge = bridge.id;
+                            bridgeType = '0';
+                        });
+                        channelOrig.on('ChannelEnteredBridge', function(event, obj) {})
+                        channelDestin.on('ChannelEnteredBridge', function(event, obj) {})
                     });
                 }
-            })
-        }
-        getExtension();
-    }
-
-
-    function createConference() {
-        let extensions = [];
-        let channels = [];
-        readline.question('Enter number of extensions?\n', number => {
-            number = parseInt(number);
-            let getExtension = () => {
-                readline.question('Enter extension\n', ext => {
-                    --number;
-                    extensions.push(ext);
-                    if (number > 0) {
-                        getExtension();
-                    } else {
-                        var bridge = client.Bridge();
-                        bridge.create({ type: 'mixing' }, function(err, bridge) {
-                            bridgeType = '1';
-                            extensions.forEach(ext => {
-                                client.channels.create({ app: 'channel-dump', endpoint: 'PJSIP/' + ext }, (err, channel) => {
-                                    channels.push(channel);
-                                    client.channels.dial({ channelId: channel.id });
-                                    bridge.addChannel({ channel: channel.id });
-                                })
-                            });
-                            currentBridge = bridge.id;
-                        });
-                    }
+            });
+        } else {
+            var bridge = client.Bridge();
+            bridge.create({ type: 'mixing' }, function(err, bridge) {
+                bridgeType = '1';
+                extensions.forEach(ext => {
+                    client.channels.create({ app: 'channel-dump', endpoint: 'PJSIP/' + ext }, (err, channel) => {
+                        client.channels.dial({ channelId: channel.id });
+                        bridge.addChannel({ channel: channel.id });
+                    })
                 });
-            }
-            getExtension();
-        });
-
-
+                currentBridge = bridge.id;
+            });
+        }
     }
 
-    function joinConference() {
+
+    function joinConference(extension, callID) {
+        client.bridges.get({ bridgeId: currentBridge }, function(err, bridge) {
+            if (bridge.bridge_type == "mixing") {
+                client.channels.create({ app: 'channel-dump', endpoint: 'PJSIP/' + extension }, (err, channel) => {
+                    client.channels.dial({ channelId: channel.id });
+                    bridge.addChannel({ channel: channel.id });
+                });
+            } else {
+                let channels = bridge.channels;
+                let newBridge = client.Bridge();
+            }
+        });
+    }
+
+    function listCalls() {
         client.bridges.list(
             function(err, bridges) {
+                console.log(bridges);
                 let i = 1;
                 console.log("Available conferences");
                 bridges.forEach(b => {
