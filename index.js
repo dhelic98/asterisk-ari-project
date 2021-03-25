@@ -25,17 +25,16 @@ function clientLoaded(err, client) {
     let getUserInput = () => {
         readline.question('', option => {
             option = option.split(' ');
-            console.log(option);
             switch (option[0]) {
                 case 'dial':
                     makeAcall(option.slice(1, option.length));
                     getUserInput();
                     break;
-                case 'join_call':
-                    joinConference(option);
+                case 'join':
+                    joinConference(option.splice(1, option.length));
                     getUserInput();
                     break;
-                case 'list_calls':
+                case 'list':
                     listCalls();
                     getUserInput();
                     break;
@@ -93,33 +92,43 @@ function clientLoaded(err, client) {
     }
 
 
-    function joinConference(extension, callID) {
-        client.bridges.get({ bridgeId: currentBridge }, function(err, bridge) {
-            if (bridge.bridge_type == "mixing") {
-                client.channels.create({ app: 'channel-dump', endpoint: 'PJSIP/' + extension }, (err, channel) => {
-                    client.channels.dial({ channelId: channel.id });
-                    bridge.addChannel({ channel: channel.id });
-                });
-            } else {
-                let channels = bridge.channels;
-                let newBridge = client.Bridge();
+    function joinConference(options) {
+        console.log(options);
+        let callId = options[0];
+        let extensions = options.splice(1, options.length);
+        console.log(extensions);
+        let bridge = null;
+        client.bridges.list(
+            function(err, bridges) {
+                bridge = bridges[callId - 1];
+                currentBridge = bridge.id;
+                extensions.forEach(extension => {
+                    client.channels.create({ app: 'channel-dump', endpoint: 'PJSIP/' + extension }, (err, channel) => {
+                        client.channels.dial({ channelId: channel.id });
+                        bridge.addChannel({ channel: channel.id });
+                    });
+                })
             }
-        });
+        );
     }
 
     function listCalls() {
         client.bridges.list(
             function(err, bridges) {
-                console.log(bridges);
                 let i = 1;
-                console.log("Available conferences");
-                bridges.forEach(b => {
-                    console.log(i++ + ") Conference")
-                    console.log("ID: " + b.id);
-                    console.log("Name: " + b.name)
-                    console.log("Creation time: " + b.creationtime);
-                    console.log('\n');
-                })
+                if (bridges.length == 0) {
+                    console.log("There are no available calls");
+                } else {
+                    console.log("Available calls");
+                    bridges.forEach(b => {
+                        console.log(i++ + ") Call")
+                        console.log("ID: " + b.id);
+                        console.log("Name: " + b.name)
+                        console.log("Creation time: " + b.creationtime);
+                        console.log("People on call: " + b.channels.length);
+                        console.log('\n');
+                    })
+                }
             }
         );
     }
